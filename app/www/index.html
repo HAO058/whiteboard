@@ -160,8 +160,10 @@ svg{display:block}
   display:flex;flex-direction:column;
   transform:translateY(100%);transition:transform .26s cubic-bezier(.32,.72,0,1);
   will-change:transform;
+  /* 平板下靠 opacity:0 隐藏，必须同时关掉命中，否则会透明地盖住画布 */
+  pointer-events:none;
 }
-.screen.on{transform:translateY(0)}
+.screen.on{transform:translateY(0);pointer-events:auto}
 .sc-bar{
   flex:0 0 auto;padding-top:env(safe-area-inset-top);
   height:calc(52px + env(safe-area-inset-top));
@@ -2535,15 +2537,23 @@ function boot(){
   }
 }
 
-$('#guideOk').addEventListener('click',function(){
-  $('#guide').classList.remove('on');
+function closeGuide(){
+  var g=$('#guide');
+  if(!g.classList.contains('on')) return;
+  g.classList.remove('on');
   var ui=Store.getUI(); ui.guided=true; Store.setUI(ui);
   // 整板铺满时在手机上字太小，引导结束后放大到可读比例
   if(V.z<0.5){
     var b=contentBounds(false);
     zoomTo(0.72,b.x+b.w/2,b.y+b.h/2);
   }
+}
+$('#guideOk').addEventListener('click',function(e){
+  e.stopPropagation();
+  closeGuide();
 });
+// 点引导层任意位置也能关闭，避免按钮失灵时被卡住
+$('#guide').addEventListener('click',closeGuide);
 
 /* 切后台时立即保存 */
 document.addEventListener('visibilitychange',function(){

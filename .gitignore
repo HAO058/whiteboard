@@ -1,0 +1,18 @@
+# 依赖
+node_modules/
+package-lock.json
+
+# 原生工程由 CI 现生成
+android/
+ios/
+
+# 构建产物
+*.apk
+*.aab
+build/
+.gradle/
+local.properties
+
+# 系统
+.DS_Store
+Thumbs.db

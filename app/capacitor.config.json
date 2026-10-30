@@ -1,0 +1,12 @@
+{
+  "appId": "com.hao.whiteboard",
+  "appName": "白板",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#FFFFFF"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

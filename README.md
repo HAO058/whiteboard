@@ -26,35 +26,34 @@ android-app/                     ← 这个目录就是 Git 仓库根目录
 
 ## 二、云端构建（推荐路径）
 
-### 1. 建仓库并上传
+> 仓库已就绪：<https://github.com/HAO058/whiteboard>
+> 最近一次构建：Actions → run #2 全部 11 个步骤通过，产物 `whiteboard-debug-apk`（APK 约 5–6 MB，压缩包 3.4 MB）。
 
-在 GitHub 新建一个仓库（Private 即可），把 `android-app/` **目录里的内容**作为仓库根目录推上去——注意不是把 `android-app` 这层目录本身套进去。
+### 1. 触发构建
+
+两种方式：
+
+- 推送到 `main`（纯文档改动不会触发，已在 `paths-ignore` 里排除 `*.md`）
+- 或到 Actions 页面点 **Run workflow** 手动触发
 
 ```bash
 cd android-app
-git init
-git add .
-git commit -m "init"
-git branch -M main
-git remote add origin https://github.com/<你的账号>/<仓库名>.git
-git push -u origin main
+git add -A
+git commit -m "说明这次改了什么"
+git push
 ```
 
-> 页面上直接拖拽上传也可以，但 `.github` 是隐藏目录，网页上传容易漏，建议用 git。
+### 2. 下载 APK
 
-### 2. 等流水线跑完
+<https://github.com/HAO058/whiteboard/actions> → 打开最近一次运行 → 页面底部 **Artifacts** → 下载 `whiteboard-debug-apk.zip` → 解压得到 `app-debug.apk`。
 
-推上去后自动触发（也可在 Actions 页面点 `Run workflow` 手动触发）。首次约 6–10 分钟，主要耗时在 Gradle 下载依赖。
+> Artifact 下载需要登录 GitHub 账号（即使是公开仓库），30 天后过期。代码本身永久保留，过期了重新跑一次即可。
 
-### 3. 下载 APK
-
-Actions → 最近一次运行 → 页面底部 **Artifacts** → 下载 `whiteboard-debug-apk.zip` → 解压得到 `app-debug.apk`。
-
-### 4. 装到设备
+### 3. 装到设备
 
 把 APK 传到手机/平板（微信文件传输、数据线、网盘均可），点击安装，首次需允许「安装未知应用」。装完桌面出现「白板」图标。
 
-### 5. 后续更新
+### 4. 后续更新
 
 改 `app/www/index.html` → 提交推送 → 流水线自动重跑 → 下载新 APK 覆盖安装。
 

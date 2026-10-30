@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -94,3 +94,14 @@ jobs:
           path: app/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Actions 的 artifact 必须登录 GitHub 才能下载；Release 资源是公开直链，
+      # 这里额外维护一个滚动覆盖的 "latest" Release，得到稳定且免登录的下载地址：
+      # https://github.com/HAO058/whiteboard/releases/latest/download/app-debug.apk
+      - name: Publish to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view latest >/dev/null 2>&1 || \
+            gh release create latest --title "最新构建" --notes "每次推送自动覆盖的构建产物"
+          gh release upload latest app/android/app/build/outputs/apk/debug/app-debug.apk --clobber

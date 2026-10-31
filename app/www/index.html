@@ -371,6 +371,25 @@ svg{display:block}
   font-size:12px;color:var(--ink-3);padding:2px 2px 10px}
 .tl-meta b{color:var(--ink);font-weight:600;font-size:14px}
 
+/* 连线语义选择 */
+.ltype{
+  height:34px;padding:0 9px;border-radius:9px;flex:0 0 auto;
+  display:flex;align-items:center;gap:5px;
+  font-size:12.5px;font-weight:600;color:var(--ink-3);background:#F4F4F7;
+  transition:.12s;white-space:nowrap;
+}
+.ltype i{width:7px;height:7px;border-radius:50%;display:block;flex:0 0 auto}
+.ltype.on{background:#fff}
+
+/* 代码块（大纲 / Mermaid 预览） */
+.codebox{
+  max-height:44vh;overflow:auto;margin:0 12px 10px;
+  background:#F7F7FA;border:1px solid var(--line);border-radius:10px;
+  padding:12px;font:12px/1.65 ui-monospace,Menlo,Consolas,monospace;
+  color:#2A2A33;white-space:pre;text-align:left;
+  -webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;
+}
+
 /* ============================================================
    平板 / 大屏（≥600px 且 ≥480px 高）：竖向工具栏 + 居中弹窗
    ============================================================ */
@@ -624,6 +643,13 @@ svg{display:block}
 var NOTE_COLORS=['#FFE8A3','#C6EFD5','#CFE0FF','#FFD6E2','#E6D8FF','#FFDCC0'];
 var INK_COLORS=['#1B1B22','#4262FF','#E5484D','#12A150','#F5A524','#8B5CF6'];
 var PEN_WIDTHS=[2,4,8];
+/* 连线语义：rel 相关（无向）/ cause 因果 / depend 依赖 / order 先后 */
+var LINK_KINDS={
+  rel:   {name:'相关', color:'#BCBCC8', dash:'6 5', arrow:false},
+  cause: {name:'因果', color:'#E5484D', dash:'',    arrow:true},
+  depend:{name:'依赖', color:'#4262FF', dash:'',    arrow:true},
+  order: {name:'先后', color:'#12A150', dash:'',    arrow:true}
+};
 var MIN_Z=0.12, MAX_Z=4, DPR_MAX=2;
 var SCHEMA=2;
 var LIMITS={notes:600,links:900,strokes:400,ptsPerStroke:4000,totalPts:150000,text:4000,fileBytes:8*1024*1024};
@@ -721,7 +747,7 @@ function serialize(){
     notes:BOARD.notes.map(function(n){
       return {id:n.id,x:Math.round(n.x),y:Math.round(n.y),w:Math.round(n.w),h:Math.round(n.h),color:n.color,text:n.text};
     }),
-    links:BOARD.links.map(function(l){return {id:l.id,from:l.from,to:l.to}}),
+    links:BOARD.links.map(function(l){return {id:l.id,from:l.from,to:l.to,kind:l.kind||'rel'}}),
     strokes:BOARD.strokes.map(function(s){
       var p=[];
       for(var i=0;i<s.pts.length;i++){
@@ -798,7 +824,12 @@ function normalizeBoard(src){
     l=rawLinks[i];
     if(!l||typeof l!=='object'){ out.skipped++; continue; }
     if(!seen[l.from]||!seen[l.to]||l.from===l.to){ out.skipped++; continue; }
-    out.links.push({id:(typeof l.id==='string'&&l.id)?l.id:uid('l'),from:l.from,to:l.to});
+    out.links.push({
+      id:(typeof l.id==='string'&&l.id)?l.id:uid('l'),
+      from:l.from,
+      to:l.to,
+      kind:(typeof l.kind==='string'&&LINK_KINDS[l.kind])?l.kind:'rel'
+    });
   }
 
   var maxS=Math.min(rawStrokes.length,LIMITS.strokes), total=0, s, pts, p, ax, ay, ap, arr;
@@ -1049,28 +1080,55 @@ function linkGeo(a,b){
 }
 function syncLinks(){
   var frag=document.createDocumentFragment();
+  var NS='http://www.w3.org/2000/svg';
+
   for(var i=0;i<BOARD.links.length;i++){
     var l=BOARD.links[i];
     var a=noteById(l.from), b=noteById(l.to);
     if(!a||!b) continue;
     var g=linkGeo(a,b);
     var on=(sel.id===l.id);
-    var col=on?'#4262FF':'#BCBCC8';
-    var p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    var kd=LINK_KINDS[l.kind]||LINK_KINDS.rel;
+
+    var p=document.createElementNS(NS,'path');
     p.setAttribute('d',g.d);
     p.setAttribute('fill','none');
-    p.setAttribute('stroke',col);
-    p.setAttribute('stroke-width',on?3:2.2);
+    p.setAttribute('stroke',kd.color);
+    p.setAttribute('stroke-width',on?3.4:2.2);
     p.setAttribute('stroke-linecap','round');
+    if(kd.dash) p.setAttribute('stroke-dasharray',kd.dash);
     frag.appendChild(p);
-    var ang=Math.atan2(g.B.y-g.c2.y,g.B.x-g.c2.x);
-    var L=11, sp=0.44;
-    var t1={x:g.B.x-Math.cos(ang-sp)*L,y:g.B.y-Math.sin(ang-sp)*L};
-    var t2={x:g.B.x-Math.cos(ang+sp)*L,y:g.B.y-Math.sin(ang+sp)*L};
-    var tri=document.createElementNS('http://www.w3.org/2000/svg','path');
-    tri.setAttribute('d','M'+g.B.x+' '+g.B.y+' L'+t1.x+' '+t1.y+' L'+t2.x+' '+t2.y+' Z');
-    tri.setAttribute('fill',col);
-    frag.appendChild(tri);
+
+    if(kd.arrow){
+      var ang=Math.atan2(g.B.y-g.c2.y,g.B.x-g.c2.x);
+      var L=11, sp=0.44;
+      var t1={x:g.B.x-Math.cos(ang-sp)*L,y:g.B.y-Math.sin(ang-sp)*L};
+      var t2={x:g.B.x-Math.cos(ang+sp)*L,y:g.B.y-Math.sin(ang+sp)*L};
+      var tri=document.createElementNS(NS,'path');
+      tri.setAttribute('d','M'+g.B.x+' '+g.B.y+' L'+t1.x+' '+t1.y+' L'+t2.x+' '+t2.y+' Z');
+      tri.setAttribute('fill',kd.color);
+      frag.appendChild(tri);
+    }
+
+    // 非「相关」类型在曲线中点标注语义
+    if(l.kind&&l.kind!=='rel'){
+      var t=0.5, u=1-t;
+      var mx=u*u*u*g.A.x+3*u*u*t*g.c1.x+3*u*t*t*g.c2.x+t*t*t*g.B.x;
+      var my=u*u*u*g.A.y+3*u*u*t*g.c1.y+3*u*t*t*g.c2.y+t*t*t*g.B.y;
+      var tx=document.createElementNS(NS,'text');
+      tx.setAttribute('x',mx);
+      tx.setAttribute('y',my);
+      tx.setAttribute('text-anchor','middle');
+      tx.setAttribute('dominant-baseline','middle');
+      tx.setAttribute('font-size','11');
+      tx.setAttribute('font-weight','600');
+      tx.setAttribute('fill',kd.color);
+      tx.setAttribute('stroke','#fff');
+      tx.setAttribute('stroke-width','3.2');
+      tx.setAttribute('paint-order','stroke');
+      tx.textContent=kd.name;
+      frag.appendChild(tx);
+    }
   }
   worldG.innerHTML='';
   worldG.appendChild(frag);
@@ -1668,7 +1726,7 @@ function finishLink(w){
     }
     if(!dup){
       var before=snap();
-      BOARD.links.push({id:uid('l'),from:l.from,to:t.id});
+      BOARD.links.push({id:uid('l'),from:l.from,to:t.id,kind:'rel'});
       commit(before);
       syncLinks(); requestRender(); scheduleSave();
       toast('已连接');
@@ -1707,7 +1765,7 @@ var undoStack=[], redoStack=[];
 function snap(){
   return JSON.stringify({
     n:BOARD.notes.map(function(n){return {id:n.id,x:n.x,y:n.y,w:n.w,h:n.h,color:n.color,text:n.text}}),
-    l:BOARD.links.map(function(l){return {id:l.id,from:l.from,to:l.to}}),
+    l:BOARD.links.map(function(l){return {id:l.id,from:l.from,to:l.to,kind:l.kind||'rel'}}),
     s:BOARD.strokes.map(function(s){return {id:s.id,color:s.color,w:s.w,pts:s.pts}})
   });
 }
@@ -1920,14 +1978,37 @@ function showSelbar(){
     $('#actEdit').style.display='';
     $('#actDup').style.display='';
   }else{
-    var tip=document.createElement('div');
-    tip.style.cssText='font-size:12.5px;color:#8C8C99;padding:0 4px;white-space:nowrap';
-    tip.textContent='已选中一条连线';
-    sw.appendChild(tip);
+    var lk=null;
+    for(var i=0;i<BOARD.links.length;i++) if(BOARD.links[i].id===sel.id) lk=BOARD.links[i];
+    var cur=lk?(lk.kind||'rel'):'rel';
+    ['rel','cause','depend','order'].forEach(function(k){
+      var kd=LINK_KINDS[k];
+      var on=(cur===k);
+      var b=document.createElement('button');
+      b.className='ltype'+(on?' on':'');
+      if(on){ b.style.color=kd.color; b.style.boxShadow='0 0 0 1.5px '+kd.color; b.style.background='#fff'; }
+      b.innerHTML='<i style="background:'+kd.color+'"></i>'+kd.name;
+      b.addEventListener('click',function(){ setLinkKind(sel.id,k); });
+      sw.appendChild(b);
+    });
     $('#actEdit').style.display='none';
     $('#actDup').style.display='none';
   }
   positionSelbar();
+}
+
+/* 修改连线语义 */
+function setLinkKind(id,kind){
+  if(!LINK_KINDS[kind]) return;
+  var l=null;
+  for(var i=0;i<BOARD.links.length;i++) if(BOARD.links[i].id===id) l=BOARD.links[i];
+  if(!l||(l.kind||'rel')===kind) return;
+  var before=snap();
+  l.kind=kind;
+  commit(before);
+  syncLinks(); ovDirty=true; requestRender(); scheduleSave();
+  showSelbar();
+  toast('已标记为「'+LINK_KINDS[kind].name+'」');
 }
 function selbarHide(){
   $('#selbar').classList.remove('on');
@@ -2066,7 +2147,8 @@ var ICON={
   grid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>',
   tree:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1.5"/><rect x="2.5" y="16" width="6" height="5" rx="1.5"/><rect x="15.5" y="16" width="6" height="5" rx="1.5"/><path d="M12 8v4M5.5 16v-4h13v4"/></svg>',
   img:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4.5 17.5 4.6-4.2 3.4 3 2.6-2.2 4.4 4"/></svg>',
-  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>'
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/></svg>',
+  doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8.5L13.5 3Z"/><path d="M13.5 3v5.5H19"/><path d="M8.5 13h7M8.5 16.5h5"/></svg>'
 };
 
 function openNoteSheet(n){
@@ -2981,6 +3063,139 @@ function openTimeline(){
   },{noMask:true});
 }
 
+/* ---------- 连线语义 → 提纲 / Mermaid ---------- */
+function noteTitle(n){
+  var t=String(n.text||'').split('\n')[0].trim();
+  return t||'（空便签）';
+}
+
+function linkGraph(){
+  var map={}, out={}, indeg={};
+  BOARD.notes.forEach(function(n){ map[n.id]=n; out[n.id]=[]; indeg[n.id]=0; });
+  BOARD.links.forEach(function(l){
+    if(out[l.from]&&map[l.to]){ out[l.from].push(l.to); indeg[l.to]++; }
+  });
+  return {map:map,out:out,indeg:indeg};
+}
+
+function buildOutline(){
+  if(!BOARD.notes.length) return '';
+  var g=linkGraph();
+  var roots=BOARD.notes.filter(function(n){ return g.indeg[n.id]===0; });
+  if(!roots.length) roots=[BOARD.notes[0]];
+  roots.sort(function(a,b){ return (a.y-b.y)||(a.x-b.x); });
+
+  var seen={}, lines=[];
+  function walk(id,depth){
+    var n=g.map[id];
+    if(!n) return;
+    var pad='';
+    for(var i=0;i<depth;i++) pad+='  ';
+    if(seen[id]){ lines.push(pad+'- '+noteTitle(n)+'（见上）'); return; }
+    seen[id]=1;
+    lines.push(pad+'- '+noteTitle(n));
+    var kids=(g.out[id]||[]).slice();
+    kids.sort(function(a,b){
+      var na=g.map[a], nb=g.map[b];
+      if(!na||!nb) return 0;
+      return (na.y-nb.y)||(na.x-nb.x);
+    });
+    kids.forEach(function(t){ walk(t,depth+1); });
+  }
+  roots.forEach(function(r){ walk(r.id,0); });
+
+  var rest=BOARD.notes.filter(function(n){ return !seen[n.id]; });
+  if(rest.length){
+    lines.push('');
+    lines.push('其他：');
+    rest.sort(function(a,b){ return (a.y-b.y)||(a.x-b.x); });
+    rest.forEach(function(n){ lines.push('- '+noteTitle(n)); });
+  }
+
+  var out=['# '+(BOARD.meta?BOARD.meta.name:'白板'),''];
+  if(BOARD.links.length){
+    var stat={rel:0,cause:0,depend:0,order:0};
+    BOARD.links.forEach(function(l){ stat[l.kind||'rel']++; });
+    var parts=[];
+    ['cause','depend','order','rel'].forEach(function(k){
+      if(stat[k]) parts.push(LINK_KINDS[k].name+' '+stat[k]);
+    });
+    out.push('> '+BOARD.notes.length+' 张便签 · '+parts.join(' / '));
+    out.push('');
+  }
+  return out.concat(lines).join('\n');
+}
+
+function buildMermaid(){
+  if(!BOARD.notes.length) return '';
+  var idmap={};
+  BOARD.notes.forEach(function(n,i){ idmap[n.id]='A'+(i+1); });
+  var lines=['flowchart TD'];
+  BOARD.notes.forEach(function(n){
+    var label=noteTitle(n).replace(/"/g,'\\"');
+    lines.push('  '+idmap[n.id]+'["'+label+'"]');
+  });
+  BOARD.links.forEach(function(l){
+    if(!idmap[l.from]||!idmap[l.to]) return;
+    var arrow=(l.kind==='rel'||!l.kind)?'-.->':'-->';
+    if(l.kind&&l.kind!=='rel') lines.push('  '+idmap[l.from]+' '+arrow+'|'+LINK_KINDS[l.kind].name+'| '+idmap[l.to]);
+    else lines.push('  '+idmap[l.from]+' '+arrow+' '+idmap[l.to]);
+  });
+  return lines.join('\n');
+}
+
+function copyText(t){
+  function fallback(){
+    try{
+      var ta=document.createElement('textarea');
+      ta.value=t;
+      ta.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0,t.length);
+      var ok=document.execCommand('copy');
+      ta.remove();
+      if(ok) toast('已复制到剪贴板','ok');
+      else toast('复制失败，请长按文本手动复制','err');
+    }catch(e){ toast('复制失败，请长按文本手动复制','err'); }
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){ toast('已复制到剪贴板','ok'); },fallback);
+  }else fallback();
+}
+
+function showTextSheet(title,text){
+  openSheet(title,function(body){
+    var pre=document.createElement('pre');
+    pre.className='codebox';
+    pre.textContent=text||'（空）';
+    body.appendChild(pre);
+    var acts=document.createElement('div');
+    acts.className='sheet-actions';
+    acts.innerHTML='<button class="btn ghost" id="cpClose">关闭</button>'
+      +'<button class="btn primary" id="cpOk">复制全部</button>';
+    body.appendChild(acts);
+    acts.querySelector('#cpClose').addEventListener('click',closeSheet);
+    acts.querySelector('#cpOk').addEventListener('click',function(){ copyText(text); });
+  });
+}
+
+function openOutlineSheet(){
+  if(!BOARD.notes.length){ toast('板上还没有便签'); return; }
+  openSheet('导出大纲',function(body){
+    body.appendChild(sheetItem(ICON.doc,'Markdown 提纲','按连线的层级缩进',false,function(){
+      showTextSheet('Markdown 提纲',buildOutline());
+    }));
+    body.appendChild(sheetItem(ICON.tree,'Mermaid 流程图','粘到文档里自动成图',false,function(){
+      showTextSheet('Mermaid 流程图',buildMermaid());
+    }));
+    var m=document.createElement('div');
+    m.className='sheet-msg';
+    m.textContent='提纲按连线方向展开：起点便签在最外层，下游逐级缩进。四种连线都参与层级；「相关」只是不画箭头。重复出现的便签标「见上」，不再展开。';
+    body.appendChild(m);
+  });
+}
+
 /* ============================================================
    17. 顶栏与更多菜单
    ============================================================ */
@@ -3017,6 +3232,7 @@ $('#btnMore').addEventListener('click',function(){
       drawMinimap();
     }));
     body.appendChild(sheetItem(ICON.img,'导出为图片','PNG，可直接发出去',false,exportPNG));
+    body.appendChild(sheetItem(ICON.doc,'导出大纲','按连线生成 Markdown / Mermaid',false,openOutlineSheet));
     body.appendChild(sheetItem(ICON.up,'导出板子文件','JSON，可再导入',false,function(){ exportBoard(); }));
     body.appendChild(sheetItem(ICON.down,'从文件导入','',false,triggerImport));
     body.appendChild(sheetItem(ICON.hist,'历史版本','恢复或查看旧版本',false,function(){
@@ -3083,11 +3299,11 @@ function seedDemo(){
   return {
     notes:[A,B,C,D,E,F],
     links:[
-      {id:'l1',from:'n1',to:'n2'},
-      {id:'l2',from:'n2',to:'n3'},
-      {id:'l3',from:'n3',to:'n4'},
-      {id:'l4',from:'n3',to:'n5'},
-      {id:'l5',from:'n6',to:'n3'}
+      {id:'l1',from:'n1',to:'n2',kind:'cause'},
+      {id:'l2',from:'n2',to:'n3',kind:'cause'},
+      {id:'l3',from:'n3',to:'n4',kind:'depend'},
+      {id:'l4',from:'n3',to:'n5',kind:'depend'},
+      {id:'l5',from:'n6',to:'n3',kind:'rel'}
     ],
     strokes:[{id:'s1',color:'#E5484D',w:2.4,pts:pts}],
     view:null
